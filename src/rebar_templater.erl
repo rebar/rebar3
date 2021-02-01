@@ -86,28 +86,32 @@ get_template_vars(TemplateTerms, State) ->
         {_, Value} -> Value;
         false -> []
     end,
-    override_vars(Vars, override_vars(global_variables(State), default_variables())).
+    override_vars(Vars, override_vars(global_variables(State), default_variables(State))).
 
 %% Provide a way to merge a set of variables with another one. The left-hand
 %% set of variables takes precedence over the right-hand set.
 %% In the case where left-hand variable description contains overriden defaults, but
 %% the right-hand one contains additional data such as documentation, the resulting
 %% variable description will contain the widest set of information possible.
-override_vars([], General) -> General;
-override_vars([{Var, Default} | Rest], General) ->
-    case lists:keytake(Var, 1, General) of
-        {value, {Var, _Default, Doc}, NewGeneral} ->
-            [{Var, Default, Doc} | override_vars(Rest, NewGeneral)];
-        {value, {Var, _Default}, NewGeneral} ->
-            [{Var, Default} | override_vars(Rest, NewGeneral)];
-        false ->
-            [{Var, Default} | override_vars(Rest, General)]
-    end;
-override_vars([{Var, Default, Doc} | Rest], General) ->
-    [{Var, Default, Doc} | override_vars(Rest, lists:keydelete(Var, 1, General))].
+override_vars(Vars, General) ->
+    {NewGeneral, VarsAcc} =
+      lists:foldl(fun({Var, Default}, {General1, Acc}) ->
+                    case lists:keytake(Var, 1, General1) of
+                        {value, {Var, _Default, Doc}, NewGeneral1} ->
+                            {NewGeneral1, [{Var, expand_path(Default, General1), Doc} | Acc]};
+                        {value, {Var, _Default}, NewGeneral1} ->
+                            {NewGeneral1, [{Var, expand_path(Default, General1)}]};
+                        false ->
+                            {General1, [{Var, expand_path(Default, General1)} | Acc]}
+                    end;
+                   ({Var, Default, Doc}, {General1, Acc}) ->
+                        {lists:keydelete(Var, 1, General1), [{Var, rebar_utils:to_list(render(Default, General1)), Doc} | Acc]}
+                end, {General, []}, Vars),
+    NewGeneral ++ VarsAcc.
 
 %% Default variables, generated dynamically.
-default_variables() ->
+default_variables(State) ->
+    RootName = filename:basename(filename:rootname(rebar_dir:root_dir(State))),
     {DefaultAuthor, DefaultEmail} = default_author_and_email(),
     {{Y,M,D},{H,Min,S}} = calendar:universal_time(),
     [{date, lists:flatten(io_lib:format("~4..0w-~2..0w-~2..0w",[Y,M,D]))},
@@ -115,6 +119,7 @@ default_variables() ->
      {author_name, DefaultAuthor},
      {author_email, DefaultEmail},
      {copyright_year, integer_to_list(Y)},
+     {root_name, RootName},
      {apps_dir, "apps", "Directory where applications will be created if needed"}].
 
 default_author_and_email() ->

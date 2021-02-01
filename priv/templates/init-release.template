@@ -1,0 +1,19 @@
+{description, "OTP Release structure for executable programs"}.
+{variables, [
+    {name, "{{root_name}}", "Name of the OTP release. An app with this name will also be created."},
+    {desc, "An OTP application", "Short description of the release's main app's purpose"}
+]}.
+{template, "sys.config", "config/sys.config"}.
+{template, "vm.args", "config/vm.args"}.
+{message, "Add relx configuration to rebar.config:\n\n{relx, [{release, {{{root_name}}, \"0.1.0\"},
+         [{{name}},
+          sasl]},
+
+        {sys_config, \"./config/sys.config\"},
+        {vm_args, \"./config/vm.args\"},
+
+        {dev_mode, true},
+        {include_erts, false},
+
+        {extended_start_script, true}]
+}."}.
