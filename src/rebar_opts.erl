@@ -166,16 +166,25 @@ override_opt(Opts1, Opts2) ->
 
 %% @private
 del_dep(OldValue, [Value]) when is_atom(Value) ->
-    NewValue = lists:keydelete(atom_to_binary(Value, utf8), 1, OldValue),
+    NewValue = del_dep_by_name(Value, OldValue),
     del_dep(NewValue, OldValue, [Value]);
 del_dep(OldValue, [{Value, _Version, _Source}]) ->
-    NewValue = lists:keydelete(atom_to_binary(Value, utf8), 1, OldValue),
+    NewValue = del_dep_by_name(Value, OldValue),
     del_dep(NewValue, OldValue, [{Value, _Version, _Source}]);
 del_dep(OldValue, [Value]) ->
     del_dep(OldValue, OldValue, [Value]);
 del_dep(OldValue, [Value|Values]) ->
     NewValue = del_dep(del_dep(OldValue, [Value]), OldValue, [Value]),
     del_dep(NewValue, Values).
+
+del_dep_by_name(Name, Deps) ->
+    DepName = rebar_utils:to_binary(Name),
+    lists:filter(fun(Dep) -> dep_name(Dep) /= DepName end, Deps).
+
+dep_name(Dep) when is_tuple(Dep) ->
+    rebar_utils:to_binary(element(1, Dep));
+dep_name(Dep) ->
+    rebar_utils:to_binary(Dep).
 
 %% @private
 %% If the initial deletion did not work remove it as always
