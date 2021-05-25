@@ -1,0 +1,5 @@
+{description, "Common Test suite module"}.
+{variables, [
+    {name, "myapp", "Name of the Common Test suite to create"}
+]}.
+{template, "ct_suite.erl", "test/{{name}}_SUITE.erl"}.
