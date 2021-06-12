@@ -654,9 +654,17 @@ expand_sh_flag({env, _EnvArg} = Env) ->
 -type err_handler() :: fun((string(), {integer(), string()}) -> no_return()).
 -spec log_msg_and_abort(string()) -> err_handler().
 log_msg_and_abort(Message) ->
-    fun(_Command, {_Rc, _Output}) ->
-            ?ABORT(Message, [])
+    fun(Command, Arg) ->
+            Msg = io_lib:format("~s~n", [Message]),
+            log_msg_and_abort(Msg, Command, Arg)
     end.
+
+-spec log_msg_and_abort(string(), string(), {integer(), string()}) -> no_return().
+log_msg_and_abort(Message, Command, {Rc, Output}) ->
+    ?ABORT("~s"
+           "sh(~ts)~n"
+          "failed with return code ~w and the following output:~n"
+          "~ts", [Message, Command, Rc, Output]).
 
 -spec debug_log_msg_and_abort(string()) -> err_handler().
 debug_log_msg_and_abort(Message) ->
@@ -668,10 +676,8 @@ debug_log_msg_and_abort(Message) ->
     end.
 
 -spec log_and_abort(string(), {integer(), string()}) -> no_return().
-log_and_abort(Command, {Rc, Output}) ->
-    ?ABORT("sh(~ts)~n"
-          "failed with return code ~w and the following output:~n"
-          "~ts", [Command, Rc, Output]).
+log_and_abort(Command, Arg) ->
+    log_msg_and_abort("", Command, Arg).
 
 -spec debug_and_abort(string(), {integer(), string()}) -> no_return().
 debug_and_abort(Command, {Rc, Output}) ->
@@ -792,7 +798,8 @@ vcs_vsn_cmd(_, _, _) ->
     unknown.
 
 cmd_vsn_invoke(Cmd, Dir) ->
-    {ok, VsnString} = rebar_utils:sh(Cmd, [{cd, Dir}, {use_stdout, false}]),
+    ErrorOpt = {abort_on_error, "vsn cmd in .app.src failed"},
+    {ok, VsnString} = rebar_utils:sh(Cmd, [ErrorOpt, {cd, Dir}, {use_stdout, false}]),
     rebar_string:trim(VsnString, trailing, "\n").
 
 %% @doc ident to the level specified
