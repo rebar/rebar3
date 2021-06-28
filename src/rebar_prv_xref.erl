@@ -7,7 +7,8 @@
 
 -export([init/1,
          do/1,
-         format_error/1]).
+         format_error/1,
+         filter_xref_results/3]).
 
 -include("rebar.hrl").
 -include_lib("providers/include/providers.hrl").

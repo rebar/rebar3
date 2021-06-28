@@ -33,6 +33,7 @@ do(Provider, State) ->
                    false ->
                        []
                end,
+
     DefaultOutputDir = filename:join(rebar_dir:base_dir(State), ?DEFAULT_RELEASE_DIR),
     RelxConfig1 = RelxMode ++ [output_dir(DefaultOutputDir, Opts),
                                {overlay_vars_values, ExtraOverlays},
@@ -41,7 +42,6 @@ do(Provider, State) ->
 
     Args = [include_erts, system_libs, vm_args, sys_config],
     RelxConfig2 = maybe_obey_command_args(RelxConfig1, Opts, Args),
-
     {ok, RelxState} = rlx_config:to_state(RelxConfig2),
 
     Providers = rebar_state:providers(State),
@@ -49,8 +49,7 @@ do(Provider, State) ->
     rebar_hooks:run_project_and_app_hooks(Cwd, pre, Provider, Providers, State),
 
     Releases = releases_to_build(Provider, Opts, RelxState),
-
-    case Provider of
+    ResultXrefs = case Provider of
         relup ->
             {Release, ToVsn} =
                 %% hd/1 can't fail because --all is not a valid option to relup
@@ -66,14 +65,42 @@ do(Provider, State) ->
 
             UpFromVsn = proplists:get_value(upfrom, Opts, undefined),
 
-            relx:build_relup(Release, ToVsn, UpFromVsn, RelxState);
+            [relx:build_relup(Release, ToVsn, UpFromVsn, RelxState)];
         _ ->
-            parallel_run(Provider, Releases, all_apps(State), RelxState)
+            Result = parallel_run(Provider, Releases, all_apps(State), RelxState),
+            Result
     end,
+    _XrefCheck = [undefined_function_calls],
+    XrefIgnores = rebar_state:get(State, xref_ignores, []),
+    XrefWarnings = lists:foldl(
+        fun(ResultRelx, Acc) ->
+            RelxStateAfterRun = case ResultRelx of
+                %% Some State will be {ok, rlx_state} (coming from build_relup and build_release)
+                %% while other will be {ok, rlx_release, rlx_state} (coming from build_tar).
+                {ok, RelxState_} -> RelxState_;
+                {ok, _Release, RelxState_} -> RelxState_
+            end,
+            Warnings = rlx_state:xref_warnings(RelxStateAfterRun),
+            Acc ++ rebar_prv_xref:filter_xref_results(undefined_function_calls, XrefIgnores, Warnings)
+        end,
+        [],
+        ResultXrefs
+    ),
+
+    format_xref_warning(XrefWarnings),
 
     rebar_hooks:run_project_and_app_hooks(Cwd, post, Provider, Providers, State),
 
     {ok, State}.
+
+
+format_xref_warning([]) ->
+    ok;
+format_xref_warning(XrefWarnings) ->
+    io:format("There are missing function calls in the release. ~n", []),
+    io:format("Make sure all applications needed at runtime are included in the release. ~n", []),
+    io:format("~s ~n", [rebar_prv_xref:format_error({xref_issues, [{undefined_function_calls, XrefWarnings}], []})]).
+
 
 read_relx_config(State, Options) ->
     ConfigFile = proplists:get_value(config, Options, []),
@@ -114,15 +141,17 @@ format_error(all_relup) ->
     "Option --all can not be applied to `relup` command";
 format_error({config_file, Filename, Error}) ->
     io_lib:format("Failed to read config file ~ts: ~p", [Filename, Error]);
+format_error({xref_issues, XrefWarnings}) ->
+    rebar_prv_xref:format_error({xref_issues, [{undefined_function_calls, XrefWarnings}], []});
 format_error(Error) ->
     io_lib:format("~p", [Error]).
 
 %%
 
 parallel_run(release, [Release], AllApps, RelxState) ->
-    relx:build_release(Release, AllApps, RelxState);
+    [relx:build_release(Release, AllApps, RelxState)];
 parallel_run(tar, [Release], AllApps, RelxState) ->
-    relx:build_tar(Release, AllApps, RelxState);
+    [relx:build_tar(Release, AllApps, RelxState)];
 parallel_run(Provider, Releases, AllApps, RelxState) ->
     rebar_parallel:queue(Releases, fun rel_worker/2, [Provider, AllApps, RelxState], fun rel_handler/2, []).
 
