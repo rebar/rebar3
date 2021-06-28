@@ -25,7 +25,8 @@
          mv_file_diff/1,
          mv_file_dir_same/1,
          mv_file_dir_diff/1,
-         mv_no_clobber/1]).
+         mv_no_clobber/1,
+         consult_env_config/1]).
 
 -include_lib("common_test/include/ct.hrl").
 -include_lib("eunit/include/eunit.hrl").
@@ -42,7 +43,8 @@ all() ->
      normalized_path,
      resolve_link,
      split_dirname,
-     mv_warning_is_ignored].
+     mv_warning_is_ignored,
+     consult_env_config].
 
 groups() ->
     [{tmpdir, [], [raw_tmpdir, empty_tmpdir, simple_tmpdir, multi_tmpdir]},
@@ -57,9 +59,10 @@ init_per_group(_, Config) -> Config.
 end_per_group(_, Config) -> Config.
 
 init_per_testcase(Test, Config) ->
+    ExcludedInWin32 = [resolve_link, mv_warning_is_ignored, consult_env_config],
     case os:type() of
         {win32, _} ->
-            case lists:member(Test, [resolve_link, mv_warning_is_ignored]) of
+            case lists:member(Test, ExcludedInWin32) of
                 true -> {skip, "broken in windows"};
                 false -> Config
             end;
@@ -361,6 +364,18 @@ mv_no_clobber(Config) ->
     ?assertEqual({ok, <<"wrong-data">>}, file:read_file(DstBad)),
     ok.
 
+consult_env_config(Config) ->
+    PrivDir = ?config(priv_dir, Config),
+    BaseDir = mk_base_dir(PrivDir, consult_env_config),
+    ?assert(filelib:is_dir(BaseDir)),
+    F = filename:join(BaseDir, "config.src"),
+    Str = "[{foo, \"${FOO}\"}, {bar, \"${BAR}\"}].",
+    file:write_file(F, Str),
+    EnvPairs = [{"FOO", "I am foo"}, {"BAR", "I am bar"}],
+    [os:putenv(Var, Val) || {Var, Val} <- EnvPairs],
+    Expected = [{foo, "I am foo"}, {bar, "I am bar"}],
+    [Actual] = rebar_file_utils:consult_env_config(BaseDir, F),
+    ?assertEqual(Expected, Actual).
 
 mk_base_dir(BasePath, Name) ->
     {_,_,Micro} = os:timestamp(),

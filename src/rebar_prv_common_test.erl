@@ -304,8 +304,10 @@ select_tests(_, _, _, {error, _} = Error) -> Error;
 select_tests(State, ProjectApps, CmdOpts, CfgOpts) ->
     %% set application env if sys_config argument is provided
     SysConfigs = sys_config_list(CmdOpts, CfgOpts),
+    _ = rebar_prv_shell:maybe_set_env_vars(State, ct_opts),
+    RootDir = rebar_dir:root_dir(State),
     Configs = lists:flatmap(fun(Filename) ->
-                                rebar_file_utils:consult_config(State, Filename)
+                                consult_config(RootDir, Filename)
                             end, SysConfigs),
     %% NB: load the applications (from user directories too) to support OTP < 17
     %% to our best ability.
@@ -315,6 +317,18 @@ select_tests(State, ProjectApps, CmdOpts, CfgOpts) ->
 
     Opts = merge_opts(CmdOpts,CfgOpts),
     discover_tests(State, ProjectApps, Opts).
+
+consult_config(RootDir, Filename) ->
+    case is_src_config(Filename) of
+        false ->
+            rebar_file_utils:consult_config(RootDir, Filename);
+        true ->
+            rebar_file_utils:consult_env_config(RootDir, Filename)
+    end.
+
+-spec is_src_config(file:filename()) -> boolean().
+is_src_config(Filename) ->
+    filename:extension(Filename) =:= ".src".
 
 %% Merge the option lists from command line and rebar.config:
 %%

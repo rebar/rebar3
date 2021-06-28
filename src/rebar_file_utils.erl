@@ -28,6 +28,7 @@
 
 -export([try_consult/1,
          consult_config/2,
+         consult_env_config/2,
          consult_config_terms/2,
          format_error/1,
          symlink_or_copy/2,
@@ -72,15 +73,75 @@ try_consult(File) ->
 
 %% @doc Parse a sys.config file and return the configuration terms
 %% for all its potentially nested configs.
--spec consult_config(rebar_state:t(), string()) -> [[tuple()]].
-consult_config(State, Filename) ->
-    Fullpath = filename:join(rebar_dir:root_dir(State), Filename),
+-spec consult_config(file:filename(), string()) -> [[tuple()]].
+consult_config(RootDir, Filename) ->
+    Fullpath = join_if_relative_path(RootDir, Filename),
     ?DEBUG("Loading configuration from ~p", [Fullpath]),
     Config = case try_consult(Fullpath) of
         [T] -> T;
         [] -> []
     end,
-    consult_config_terms(State, Config).
+    consult_config_terms(RootDir, Config).
+
+%% @doc Parse a sys.config.src file and return the configuration terms
+%% for all its potentially nested configs.
+-spec consult_env_config(file:filename(), file:filename()) -> [[tuple()]].
+consult_env_config(RootDir, Filename) ->
+    Fullpath = join_if_relative_path(RootDir, Filename),
+    RawString = case file:read_file(Fullpath) of
+        {error, _} -> "[].";
+        {ok, Bin} -> unicode:characters_to_list(Bin)
+    end,
+    ReplacedStr = replace_env_vars(RawString),
+    case rebar_string:consult(unicode:characters_to_list(ReplacedStr)) of
+        {error, Reason} ->
+            throw(?PRV_ERROR({bad_term_file, Filename, Reason}));
+        [Terms] ->
+            consult_config_terms(RootDir, Terms)
+    end.
+
+-spec join_if_relative_path(file:filename(), file:filename()) -> file:filename().
+join_if_relative_path(Dir, Path) ->
+    case filename:pathtype(Path) of
+        absolute -> Path;
+        _ -> filename:join(Dir, Path)
+    end.
+
+%% @doc quick and simple variable substitution writeup.
+%% Supports `${varname}' but not `$varname' nor nested
+%% values such as `${my_${varname}}'.
+%% The variable are also defined as only supporting
+%% the form `[a-zA-Z_]+[a-zA-Z0-9_]*' as per the POSIX
+%% standard.
+-spec replace_env_vars(string()) -> unicode:charlist().
+replace_env_vars("") -> "";
+replace_env_vars("${" ++ Str) ->
+    case until_var_end(Str) of
+        {ok, VarName, Rest} ->
+            replace_varname(VarName) ++ replace_env_vars(Rest);
+        error ->
+            "${" ++ replace_env_vars(Str)
+    end;
+replace_env_vars([Char|Str]) ->
+    [Char | replace_env_vars(Str)].
+
+until_var_end(Str) ->
+    case re:run(Str, "([a-zA-Z_]+[a-zA-Z0-9_]*)}", [{capture, [1], list}]) of
+        nomatch ->
+            error;
+        {match, [Name]} ->
+            {ok, Name, drop_varname(Name, Str)}
+    end.
+
+replace_varname(Var) ->
+    %% os:getenv(Var, "") is only available in OTP-18.0
+    case os:getenv(Var) of
+        false -> "";
+        Val -> Val
+    end.
+
+drop_varname("", "}" ++ Str) -> Str;
+drop_varname([_|Var], [_|Str]) -> drop_varname(Var, Str).
 
 %% @doc From a parsed sys.config file, expand all the terms to include
 %% its potential nested configs. It is also possible that no sub-terms
@@ -91,13 +152,15 @@ consult_config(State, Filename) ->
 %% and evaluation of 'sys.config.src' files, giving a way to handle
 %% expansion that is separate from regular config handling.
 -spec consult_config_terms(rebar_state:t(), [tuple()]) -> [[tuple()]].
-consult_config_terms(State, Config) ->
+consult_config_terms(RootDir, Config) ->
     JoinedConfig = lists:flatmap(
         fun (SubConfig) when is_list(SubConfig) ->
-            case lists:suffix(".config", SubConfig) of
+            T = {lists:suffix(".config", SubConfig), lists:suffix(".config.src", SubConfig)},
+            case T of
                 %% since consult_config returns a list in a list we take the head here
-                false -> hd(consult_config(State, SubConfig ++ ".config"));
-                true -> hd(consult_config(State, SubConfig))
+                {false, false} -> hd(consult_config(RootDir, SubConfig ++ ".config"));
+                {true, _} -> hd(consult_config(RootDir, SubConfig));
+                {_, true} -> hd(consult_env_config(RootDir, SubConfig))
             end;
             (Entry) -> [Entry]
       end, Config),

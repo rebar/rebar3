@@ -515,8 +515,9 @@ apply_sys_config(State) ->
         proplists:get_value(sys_config, RawOpts, ""),
         [$,]
     ) ++ CfgSysCfg,
+    RootDir = rebar_dir:root_dir(State),
     Configs = lists:flatmap(
-        fun(Filename) -> rebar_file_utils:consult_config(State, Filename) end,
+        fun(Filename) -> rebar_file_utils:consult_config(RootDir, Filename) end,
         SysCfgs
     ),
     %% NB: load the applications (from user directories too) to support OTP < 17

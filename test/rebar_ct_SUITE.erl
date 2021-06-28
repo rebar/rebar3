@@ -1158,6 +1158,10 @@ cmd_sys_config(Config) ->
     ok = filelib:ensure_dir(OtherCfgFile),
     ok = file:write_file(OtherCfgFile, other_sys_config_file(AppName)),
 
+    SrcCfgFile = filename:join([AppDir, "config", "source.config.src"]),
+    ok = filelib:ensure_dir(SrcCfgFile),
+    ok = file:write_file(SrcCfgFile, cfg_sys_src_config_file(AppName, "MyExpectedString")),
+
     RebarConfig = [{ct_opts, [{sys_config, CfgFile}]}],
     {ok, State1} = rebar_test_utils:run_and_check(Config, RebarConfig, ["as", "test", "lock"], return),
 
@@ -1165,6 +1169,8 @@ cmd_sys_config(Config) ->
     ?assertEqual({ok, cfg_value}, application:get_env(AppName, key)),
 
     ?assertEqual({ok, other_cfg_value}, application:get_env(AppName, other_key)),
+
+    ?assertEqual({ok, "MyExpectedString"}, application:get_env(AppName, src_key)),
 
     Providers = rebar_state:providers(State1),
     Namespace = rebar_state:namespace(State1),
@@ -1674,7 +1680,11 @@ cmd_sys_config_file(AppName) ->
     io_lib:format("[{~ts, [{key, cmd_value}]}].", [AppName]).
 
 cfg_sys_config_file(AppName) ->
-    io_lib:format("[{~ts, [{key, cfg_value}]}, \"config/other\"].", [AppName]).
+    io_lib:format("[{~ts, [{key, cfg_value}]}, \"config/other\", \"config/source.config.src\"].", [AppName]).
 
 other_sys_config_file(AppName) ->
     io_lib:format("[{~ts, [{other_key, other_cfg_value}]}].", [AppName]).
+
+cfg_sys_src_config_file(AppName, ExpectedValue) ->
+    os:putenv("SRC_VALUE", ExpectedValue),
+    io_lib:format("[{~ts, [{src_key, \"${SRC_VALUE}\"}]}].", [AppName]).
