@@ -1,0 +1,27 @@
+{application, test_elixirtz,
+ [{description, "An OTP library"},
+  {vsn, "0.1.0"},
+  {registered, []},
+  {applications,
+   [kernel,
+    stdlib,
+	unicode_util_compat,
+	idna,
+	mimerl,
+	certifi,
+	syntax_tools,
+	parse_trans,
+	ssl_verify_fun,
+	metrics,
+	hackney,
+	compiler,
+	elixir,
+	logger,
+    tzdata
+   ]},
+  {env,[]},
+  {modules, []},
+
+  {licenses, ["Apache 2.0"]},
+  {links, []}
+ ]}.

@@ -241,6 +241,8 @@ app_infos_to_relx(AppInfos, AppType) ->
                              => app_info_to_relx(rebar_app_info:app_to_map(AppInfo), AppType)}
                 end, #{}, AppInfos).
 
+app_info_to_relx(#{vsn := Vsn}=Map, AppType) when is_binary(Vsn) ->
+    app_info_to_relx(Map#{vsn => binary:bin_to_list(Vsn)}, AppType);
 app_info_to_relx(#{name := Name,
                    vsn := Vsn,
                    applications := Applications,
