@@ -14,6 +14,7 @@ all() ->
 
 groups() ->
     [{resolve_version, [use_first_repo_match, use_exact_with_hash, fail_repo_update,
+                        update_package,
                         ignore_match_in_excluded_repo, optional_prereleases]}].
 
 init_per_group(resolve_version, Config) ->
@@ -131,6 +132,27 @@ init_per_testcase(organization_merging, Config) ->
     meck:new(file, [passthrough, no_link, unstick]),
     meck:new(rebar_packages, [passthrough, no_link]),
     Config;
+init_per_testcase(update_package, Config) ->
+    Deps = ?config(deps, Config),
+    Repos = ?config(repos, Config),
+    State = setup_deps_and_repos(Deps, Repos),
+
+    DDeps = [ #{package => <<"DD1">>, optional => true, requirement => <<"~> 0.1">>},
+              #{package => <<"DD2">>, optional => false, requirement => <<"~> 0.1">>},
+              #{package => <<"DD3">>, requirement => <<"~> 0.1">>}
+            ],
+
+    meck:new(r3_hex_repo, [passthrough, no_link]),
+    meck:expect(r3_hex_repo, get_package,
+               fun(_, <<"D">>) ->
+                       {ok, {200, #{}, [#{
+                                         inner_checksum => <<"inner checksum">>,
+                                         outer_checksum => <<"outer checksum">>,
+                                         version => <<"1.0.0">>,
+                                         dependencies => DDeps
+                                        }]}}
+               end),
+    [{state, State} | Config];
 init_per_testcase(_, Config) ->
     Config.
 
@@ -147,6 +169,8 @@ end_per_testcase(Case, _Config) when Case =:= use_first_repo_match ;
                                      Case =:= ignore_match_in_excluded_repo ;
                                      Case =:= optional_prereleases ->
     meck:unload(rebar_packages);
+end_per_testcase(update_package, _Config) ->
+    meck:unload(r3_hex_repo);
 end_per_testcase(_, _) ->
     ok.
 
@@ -458,6 +482,15 @@ optional_prereleases(Config) ->
                     http_adapter := {rebar_httpc_adapter, #{profile := rebar}}}},
                  rebar_packages:resolve_version(<<"B">>, <<"~> 1.5.0">>, <<"inner checksum">>, <<"outer checksum">>,
                                                 ?PACKAGE_TABLE, State1)).
+
+update_package(Config) ->
+    State = ?config(state, Config),
+    Repo = <<"hexpm">>,
+    ok = rebar_packages:update_package(<<"D">>, #{name => Repo}, State),
+    Key = {<<"D">>, ec_semver:parse(<<"1.0.0">>), Repo},
+    [#package{key = Key, dependencies = Deps}] = ets:lookup(?PACKAGE_TABLE, Key),
+    Expect = [<<"DD2">>, <<"DD3">>],
+    ?assertMatch(Expect, lists:sort([Dep || {Dep, _} <- Deps])).
 
 %%
 

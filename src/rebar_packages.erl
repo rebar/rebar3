@@ -232,7 +232,8 @@ verify_table(State) ->
 parse_deps(Deps) ->
     [{maps:get(app, D, Name), {pkg, Name, Constraint, undefined, undefined}}
      || D=#{package := Name,
-            requirement := Constraint} <- Deps].
+            requirement := Constraint} <- Deps,
+            not maps:get(optional, D, false)].
 
 parse_checksum(<<Checksum:256/big-unsigned>>) ->
     list_to_binary(
