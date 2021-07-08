@@ -1,0 +1,6 @@
+{description, "Common Test suite"}.
+{variables, [
+    {name, "suite", "Name of the suite, prepended to the standard _SUITE suffix"}
+]}.
+{dir, "test"}.
+{template, "ct_suite.erl", "test/{{name}}_SUITE.erl"}.
