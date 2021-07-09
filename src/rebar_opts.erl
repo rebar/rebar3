@@ -216,7 +216,7 @@ merge_opt(relx, NewValue, OldValue) ->
     {NewOverlays, NewOther} = lists:partition(Partition, NewValue),
     {OldOverlays, OldOther} = lists:partition(Partition, OldValue),
     rebar_utils:tup_umerge(NewOverlays, OldOverlays)
-    ++ rebar_utils:tup_umerge(OldOther, NewOther);
+    ++ OldOther ++ NewOther;
 merge_opt(Key, NewValue, OldValue)
     when Key == erl_opts; Key == eunit_compile_opts; Key == ct_compile_opts ->
     merge_erl_opts(lists:reverse(OldValue), NewValue);
